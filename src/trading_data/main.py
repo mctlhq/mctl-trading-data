@@ -58,7 +58,12 @@ def _register_tools(mcp: FastMCP, state: dict) -> None:
 def create_app() -> FastAPI:
     logging.basicConfig(level=settings.log_level.upper())
 
-    mcp = FastMCP("trading-data")
+    # streamable_http_path="/" puts the MCP route at the sub-app's root.
+    # Combined with `api.mount("/mcp", mcp_app)` below, the public URL is
+    # exactly /mcp — without this override FastMCP defaults to /mcp inside
+    # its sub-app, which compounds with the FastAPI mount prefix into the
+    # surprising path /mcp/mcp.
+    mcp = FastMCP("trading-data", streamable_http_path="/")
     state = _build_state()
     _register_tools(mcp, state)
     mcp_app = mcp.streamable_http_app()
