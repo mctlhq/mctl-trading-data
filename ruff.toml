@@ -1,0 +1,12 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "RUF"]
+# S101: assert used (fine in tests + defensive code)
+# S104: bind to all interfaces (intentional for k8s pod listening on 0.0.0.0)
+# S311: random for non-crypto purposes (we use it for backoff jitter only)
+ignore = ["S101", "S104", "S311"]
+
+[lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
