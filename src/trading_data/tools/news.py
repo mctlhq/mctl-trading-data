@@ -7,21 +7,31 @@ import httpx
 
 from ..cache import async_ttl_cache
 
-CRYPTOPANIC_URL = "https://cryptopanic.com/api/v1/posts/"
+CRYPTOCOMPARE_URL = "https://min-api.cryptocompare.com/data/v2/news/"
 TTL_SEC = 300
+
+LangType = Literal["EN", "PT", "ES", "TR", "FR", "JP", "RU", "DE", "IT", "KO", "ZH"]
+SortType = Literal["latest", "popular"]
 
 
 @async_ttl_cache(maxsize=64, ttl=TTL_SEC)
-async def _fetch(auth_token: str, currencies: tuple[str, ...], filter_: str, public: bool) -> dict[str, Any]:
+async def _fetch(
+    api_key: str,
+    categories: tuple[str, ...],
+    exclude_categories: tuple[str, ...],
+    lang: str,
+    sort_order: str,
+) -> dict[str, Any]:
     params: dict[str, Any] = {
-        "auth_token": auth_token,
-        "currencies": ",".join(currencies) if currencies else None,
-        "filter": filter_ if filter_ != "all" else None,
-        "public": "true" if public else None,
+        "lang": lang,
+        "sortOrder": sort_order,
+        "categories": ",".join(categories) if categories else None,
+        "excludeCategories": ",".join(exclude_categories) if exclude_categories else None,
     }
     params = {k: v for k, v in params.items() if v is not None}
+    headers = {"Authorization": f"Apikey {api_key}"} if api_key else {}
     async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(CRYPTOPANIC_URL, params=params)
+        r = await client.get(CRYPTOCOMPARE_URL, params=params, headers=headers)
         r.raise_for_status()
         return r.json()
 
@@ -30,28 +40,47 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _within_hours(published_at: str, hours_back: float, now_utc: datetime) -> bool:
-    try:
-        ts = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    delta = (now_utc - ts).total_seconds() / 3600.0
-    return delta <= hours_back
+def _published_iso(unix_seconds: int) -> str:
+    return datetime.fromtimestamp(unix_seconds, tz=UTC).isoformat()
 
 
-def make_cryptopanic_recent_news(api_key: str):
-    async def cryptopanic_recent_news(
-        currencies: list[str] | None = None,
-        filter: Literal["rising", "hot", "important", "saved", "lol", "all"] = "rising",
+def _split_pipe(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [t for t in value.split("|") if t]
+
+
+def make_news_recent(api_key: str):
+    async def news_recent(
+        categories: list[str] | None = None,
+        exclude_categories: list[str] | None = None,
         hours_back: float = 2.0,
         max: int = 20,
+        lang: LangType = "EN",
+        sort_order: SortType = "latest",
     ) -> dict[str, Any]:
-        """Recent news posts from CryptoPanic (free tier)."""
+        """Recent crypto news from CryptoCompare News (free tier).
+
+        `categories` is matched server-side against CryptoCompare's category
+        taxonomy (e.g. "ETH", "BTC", "Trading", "Mining"). Pass `["ETH"]` to
+        get the same scope as the previous CryptoPanic `currencies=["ETH"]`.
+        `exclude_categories` defaults to `["Sponsored"]` — promo posts that
+        should never reach the news_score gate.
+
+        `hours_back` is applied client-side after the upstream response,
+        because CryptoCompare returns the latest items globally and does not
+        accept a time-window filter.
+        """
         if not api_key:
-            return {"error": {"code": "no_api_key", "message": "CRYPTOPANIC_API_KEY not configured"}}
+            return {"error": {"code": "no_api_key", "message": "NEWS_API_KEY not configured"}}
+        cats = tuple(c.strip() for c in (categories or ["ETH"]) if c and c.strip())
+        excl = tuple(
+            c.strip()
+            for c in (exclude_categories if exclude_categories is not None else ["Sponsored"])
+            if c and c.strip()
+        )
         try:
-            cur_tuple = tuple(currencies or ["ETH"])
-            payload = await _fetch(api_key, cur_tuple, filter, True)
+            payload = await _fetch(api_key, cats, excl, lang, sort_order)
         except httpx.HTTPStatusError as exc:
             return {
                 "error": {
@@ -63,26 +92,42 @@ def make_cryptopanic_recent_news(api_key: str):
         except (httpx.HTTPError, TimeoutError) as exc:
             return {"error": {"code": "upstream_unreachable", "message": str(exc)}}
 
-        now_utc = datetime.now(UTC)
+        if str(payload.get("Type", "")) not in ("100", ""):
+            return {
+                "error": {
+                    "code": "cryptocompare_error",
+                    "message": str(payload.get("Message") or "unknown"),
+                }
+            }
+
+        cutoff_unix = (
+            int(datetime.now(UTC).timestamp() - hours_back * 3600) if hours_back else 0
+        )
         items: list[dict[str, Any]] = []
-        for post in (payload.get("results") or [])[: max * 3]:
-            published_at = str(post.get("published_at") or "")
-            if hours_back and not _within_hours(published_at, hours_back, now_utc):
+        for post in payload.get("Data") or []:
+            try:
+                published_on = int(post.get("published_on", 0))
+            except (TypeError, ValueError):
                 continue
-            votes = post.get("votes") or {}
-            source = (post.get("source") or {}).get("title", "")
+            if cutoff_unix and published_on < cutoff_unix:
+                continue
+            source_info = post.get("source_info") or {}
             items.append(
                 {
+                    "id": post.get("id"),
                     "title": post.get("title"),
                     "url": post.get("url"),
-                    "published_at": published_at,
+                    "published_at": _published_iso(published_on),
+                    "published_on": published_on,
+                    "source": source_info.get("name") or post.get("source"),
+                    "categories": _split_pipe(post.get("categories")),
+                    "tags": _split_pipe(post.get("tags")),
                     "votes": {
-                        "positive": votes.get("positive", 0),
-                        "negative": votes.get("negative", 0),
-                        "important": votes.get("important", 0),
+                        "up": int(post.get("upvotes", 0) or 0),
+                        "down": int(post.get("downvotes", 0) or 0),
                     },
-                    "source": source,
-                    "currencies": [c.get("code") for c in (post.get("currencies") or []) if c.get("code")],
+                    "body_excerpt": (post.get("body") or "")[:400],
+                    "image_url": post.get("imageurl"),
                 }
             )
             if len(items) >= max:
@@ -93,10 +138,13 @@ def make_cryptopanic_recent_news(api_key: str):
             "meta": {
                 "cached_at": _now_iso(),
                 "ttl_sec": TTL_SEC,
-                "source": "cryptopanic_v1_posts",
-                "filter": filter,
+                "source": "cryptocompare_news_v2",
+                "categories": list(cats),
+                "exclude_categories": list(excl),
                 "hours_back": hours_back,
+                "sort_order": sort_order,
+                "lang": lang,
             },
         }
 
-    return cryptopanic_recent_news
+    return news_recent

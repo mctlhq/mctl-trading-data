@@ -6,7 +6,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     trading_data_token: str = Field(default="", validation_alias="TRADING_DATA_TOKEN")
-    cryptopanic_api_key: str = Field(default="", validation_alias="CRYPTOPANIC_API_KEY")
+    # Vendor-neutral name; backed by CryptoCompare News API as of 0.2.0
+    # (CryptoPanic free tier was discontinued April 2026). If we swap
+    # vendors again, only news.py needs to change — env stays.
+    news_api_key: str = Field(default="", validation_alias="NEWS_API_KEY")
     etherscan_api_key: str = Field(default="", validation_alias="ETHERSCAN_API_KEY")
 
     watch_symbols: str = Field(default="ETHUSDT", validation_alias="WATCH_SYMBOLS")

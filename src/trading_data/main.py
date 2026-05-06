@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .auth import BearerAuthMiddleware
 from .config import settings
-from .tools.news import make_cryptopanic_recent_news
+from .tools.news import make_news_recent
 from .tools.onchain import make_etherscan_gas_snapshot, make_etherscan_whale_transactions
 from .tools.taker import (
     make_aggregated_taker_24h,
@@ -43,14 +43,14 @@ def _register_tools(mcp: FastMCP, state: dict) -> None:
     bybit_taker_24h = make_bybit_taker_24h(state["bybit_buckets"])
     bitget_taker_24h = make_bitget_taker_24h(state["bitget_buckets"])
     aggregated_taker_24h = make_aggregated_taker_24h(state["bybit_buckets"], state["bitget_buckets"])
-    cryptopanic_recent_news = make_cryptopanic_recent_news(settings.cryptopanic_api_key)
+    news_recent = make_news_recent(settings.news_api_key)
     etherscan_gas_snapshot = make_etherscan_gas_snapshot(settings.etherscan_api_key)
     etherscan_whale_transactions = make_etherscan_whale_transactions(settings.etherscan_api_key)
 
     mcp.tool(name="bybit_taker_24h")(bybit_taker_24h)
     mcp.tool(name="bitget_taker_24h")(bitget_taker_24h)
     mcp.tool(name="aggregated_taker_24h")(aggregated_taker_24h)
-    mcp.tool(name="cryptopanic_recent_news")(cryptopanic_recent_news)
+    mcp.tool(name="news_recent")(news_recent)
     mcp.tool(name="etherscan_gas_snapshot")(etherscan_gas_snapshot)
     mcp.tool(name="etherscan_whale_transactions")(etherscan_whale_transactions)
 

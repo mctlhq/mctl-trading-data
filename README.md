@@ -9,7 +9,7 @@ MCP service exposing market intelligence tools to `labs-openclaw` (and any other
 | `bybit_taker_24h` | Rolling 24h taker buy/sell volume from Bybit V5 public WS (`publicTrade.<symbol>`). |
 | `bitget_taker_24h` | Rolling 24h taker buy/sell volume from Bitget V2 public WS (`trade` channel, USDT-FUTURES). |
 | `aggregated_taker_24h` | Per-exchange + total net USD flow with N-leg agreement cascade. |
-| `cryptopanic_recent_news` | Recent ETH news from CryptoPanic, free tier. |
+| `news_recent` | Recent crypto news from CryptoCompare News v2 (free tier). Vendor-neutral name; swap upstreams without changing the tool surface. |
 | `etherscan_gas_snapshot` | Current safeLow/standard/fast gwei. |
 | `etherscan_whale_transactions` | Filtered large-value transactions for an address. |
 
@@ -36,7 +36,7 @@ See `mctl-gitops/platform-gitops/services/labs/trading-data/values.yaml` for the
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 export TRADING_DATA_TOKEN=$(openssl rand -base64 48)
-export CRYPTOPANIC_API_KEY=...
+export NEWS_API_KEY=...        # CryptoCompare News API key (free tier)
 export ETHERSCAN_API_KEY=...
 uvicorn trading_data.main:app --host 0.0.0.0 --port 8080
 ```
