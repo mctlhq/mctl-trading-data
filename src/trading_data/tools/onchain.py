@@ -7,9 +7,10 @@ import httpx
 
 from ..cache import async_ttl_cache
 
-ETHERSCAN_URL = "https://api.etherscan.io/api"
+ETHERSCAN_URL = "https://api.etherscan.io/v2/api"
 GAS_TTL_SEC = 15
 WHALE_TTL_SEC = 120
+ETH_MAINNET_CHAIN_ID = 1
 
 VITALIK_ADDRESS = "0xab5801a7d398351b8be11c439e05c5b3259aec9b"
 
@@ -20,7 +21,12 @@ def _now_iso() -> str:
 
 @async_ttl_cache(maxsize=4, ttl=GAS_TTL_SEC)
 async def _fetch_gas(api_key: str) -> dict[str, Any]:
-    params = {"module": "gastracker", "action": "gasoracle", "apikey": api_key}
+    params = {
+        "chainid": ETH_MAINNET_CHAIN_ID,
+        "module": "gastracker",
+        "action": "gasoracle",
+        "apikey": api_key,
+    }
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(ETHERSCAN_URL, params=params)
         r.raise_for_status()
@@ -30,6 +36,7 @@ async def _fetch_gas(api_key: str) -> dict[str, Any]:
 @async_ttl_cache(maxsize=64, ttl=WHALE_TTL_SEC)
 async def _fetch_txlist(api_key: str, address: str, limit: int) -> dict[str, Any]:
     params = {
+        "chainid": ETH_MAINNET_CHAIN_ID,
         "module": "account",
         "action": "txlist",
         "address": address,
