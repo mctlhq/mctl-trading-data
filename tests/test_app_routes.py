@@ -33,11 +33,12 @@ def test_mcp_endpoint_at_clean_path():
 
     app = create_app()
     paths = _all_paths(app.routes)
-    # FastMCP route at sub-app root + FastAPI mount at /mcp -> /mcp/.
-    # /mcp (no trailing slash) returns 307 -> /mcp/. Both are acceptable;
-    # the regression we guard against is /mcp/mcp.
-    assert "/mcp/" in paths or "/mcp" in paths, paths
+    # FastMCP exposes /mcp at its sub-app root; we mount the sub-app at
+    # FastAPI's "/" so the public path is exactly /mcp (no trailing
+    # slash, no /mcp/mcp). Anything else is a regression worth blocking.
+    assert "/mcp" in paths, paths
     assert "/mcp/mcp" not in paths, paths
+    assert "/mcp/" not in paths, paths
 
 
 def test_health_routes_present():
