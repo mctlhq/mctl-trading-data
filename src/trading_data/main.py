@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .auth import BearerAuthMiddleware
 from .config import settings
@@ -58,7 +59,19 @@ def _register_tools(mcp: FastMCP, state: dict) -> None:
 def create_app() -> FastAPI:
     logging.basicConfig(level=settings.log_level.upper())
 
-    mcp = FastMCP("trading-data")
+    # FastMCP enables DNS-rebinding Host-header validation by default with
+    # an allow-list of {127.0.0.1, localhost} only — that rejects every
+    # cluster-internal DNS name (e.g. labs-trading-data-base-service.labs
+    # .svc.cluster.local) with 421 Misdirected Request. The protection
+    # exists for browser-served servers; this MCP endpoint is reachable
+    # only inside the cluster, sits behind a Bearer middleware
+    # (constant-time compare) and a NetworkPolicy that restricts ingress
+    # to the labs-openclaw pods. Disabling is the right trade-off for
+    # this deployment shape; if the service is ever exposed past the
+    # cluster boundary, switch to `allowed_hosts=[...]` listing every
+    # FQDN form (with and without port) that callers will use.
+    transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    mcp = FastMCP("trading-data", transport_security=transport_security)
     state = _build_state()
     _register_tools(mcp, state)
     mcp_app = mcp.streamable_http_app()
