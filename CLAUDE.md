@@ -17,7 +17,7 @@
 - Merge commits (no-ff, no squash): `gh pr merge <N> --merge --delete-branch`
 
 ## PR review
-- Request both bots: `@codex review` + `@copilot review`
+- Request both bots: `@claude review` + `@copilot review`
 - Merge gate: at least ONE bot clean (no P1/P2)
 - CI must be green
 
